@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
 
+import pandas
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import k_means as km
@@ -11,11 +12,12 @@ import matplotlib.pyplot as plt
 
 df = pd.DataFrame()
 df_cache = pd.DataFrame()
+df_display = pd.DataFrame()
 k_value = 3
-
+selected_items = []
 
 def select_file():
-    global df_cache
+    global df
     file_path = filedialog.askopenfilename(
         title="Select .csv File",
         filetypes=[("CSV Files", "*.csv")],  # sadece .csv
@@ -23,21 +25,29 @@ def select_file():
     file_entry.delete(0, tk.END)
     file_entry.insert(0, file_path)
 
-    df_cache = pd.read_csv(file_path)
-
+    df = pd.read_csv(file_path)
     listbox.delete(0, tk.END)
 
-    for column in df_cache.columns:
+    for column in df.columns:
         listbox.insert(tk.END, column)
 
 
-def calculate():
-    global df, k_value, plot_frame
+def calculate(): # dön
+    global df_cache, k_value, plot_frame, df_display
     k_value = k_entry.get()
+    df_cache = df.copy()
+    df_cache.drop(columns=selected_items, inplace=True)
     # file_path = file_entry.get()
     # df = pd.read_csv(file_path, index_col='Unnamed: 0')
-    df['Cluster'] = km.kmeans(df, int(k_value))
-    df.to_csv('results.csv')
+
+    df_display = df_cache.copy()
+
+    if checkbox.get():
+        df_cache = normalization(df_cache)
+
+    df_display['Cluster'] = km.kmeans(df_cache, int(k_value))
+    df['Cluster'] = df_display['Cluster'].copy()
+    df.to_csv('results.csv', index=None)
     for widget in plot_frame.winfo_children():
         widget.destroy()
     result_label.config(text="Sonuçlar results.csv adlı dosyaya kaydedildi.", fg="red")
@@ -45,17 +55,26 @@ def calculate():
     plot_clusters()
 
 
+def normalization(df_n: pandas.DataFrame):
+    for column in df_n.columns:
+        min_val = df_n[column].min()
+        max_val = df_n[column].max()
+        df_n[column] = (df_n[column] - min_val) / (max_val - min_val)
+
+    return df_n
+
+
 def plot_clusters():
-    global df, k_value
-    for i in range(1, len(df.columns) - 1):
+    global df_display, k_value
+    for i in range(1, len(df_display.columns) - 1):
         fig, ax = plt.subplots(figsize=(8, 6))
         plt.close('all')
 
         # scatter plot
         # x ekseni verisetinin ilk sütununa sabit
-        scatter = ax.scatter(df.iloc[:, 0], df.iloc[:, i], c=df['Cluster'], cmap='viridis')
-        ax.set_xlabel(df.columns[0])
-        ax.set_ylabel(df.columns[i])
+        scatter = ax.scatter(df_display.iloc[:, 0], df_display.iloc[:, i], c=df_display['Cluster'], cmap='viridis')
+        ax.set_xlabel(df_display.columns[0])
+        ax.set_ylabel(df_display.columns[i])
 
         legend = ax.legend(*scatter.legend_elements(), title='Clusters')
         ax.add_artist(legend)
@@ -68,11 +87,9 @@ def plot_clusters():
 
 
 def preparation():
-    global df_cache, df
+    global df_cache, df, selected_items
     selected_indices = listbox.curselection()
     selected_items = [listbox.get(index) for index in selected_indices]
-    df_cache.drop(columns=selected_items, inplace=True)
-    df = df_cache
     result_label.config(text="Başarılı.", fg="red")
     root.after(3000, lambda: result_label.config(text="", fg="black"))
     listbox.delete(0, tk.END)
@@ -80,6 +97,8 @@ def preparation():
 
 root = tk.Tk()
 root.title("K-Means Clustering")
+
+checkbox = tk.BooleanVar()
 
 screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
@@ -115,6 +134,9 @@ k_label.pack()
 
 k_entry = tk.Entry(rframe, width=10)
 k_entry.pack(pady=5)
+
+checkbox_ui = tk.Checkbutton(rframe, text="Normalizasyon?", variable=checkbox)
+checkbox_ui.pack(pady=5)
 
 calculate_button = tk.Button(rframe, text="Hesapla", command=calculate)
 calculate_button.pack(pady=10)
